@@ -1,5 +1,5 @@
-USER_DIR=ARGoS_based_Air_Resistance__User_Manual
-DEV_DIR=ARGoS_based_Air_Resistance__developer_manual
+USER_DIR=ARGoS_based_Air_Resistance___User_Manual
+DEV_DIR=ARGoS_based_Air_Resistance___developer_manual
 OUT_DIR=pdf
 
 .PHONY: docs user developer clean
