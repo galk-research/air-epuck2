@@ -1,0 +1,300 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{float}            % [H] exact placement
+\usepackage[section]{placeins}% \FloatBarrier keeps floats in section
+\usepackage{microtype}        % nicer line breaks
+\usepackage{url}              % \nolinkurl for breakable filenames
+
+% Search figures in both root and figs/
+\graphicspath{{}{figs/}}
+
+% Listings style (no language to avoid missing language warnings)
+\lstset{
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  frame=single,
+  breaklines=true,
+  showstringspaces=false
+}
+\setlist{noitemsep,topsep=2pt}
+
+% ---------- Title ----------
+\title{ARGoS-based Air Resistance --- User Manual}
+\author{Roi Sela}
+\date{October 2025}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Introduction}
+This project extends ARGoS with a simple but effective wind model and aerodynamic ``blocking'' (wake) between robots. It lets you demonstrate how a robot aligned behind another can make upwind progress even when an unshielded robot cannot. The examples mirror the style of the ARGoS gallery for fast onboarding.
+
+\paragraph{What you get}
+\begin{itemize}
+  \item \textbf{Global wind}: a 2D wind vector (angle in degrees, magnitude in \textbf{cm/s}) configured once per experiment.
+  \item \textbf{Post-step impulses}: wind and drive are applied as impulses after collisions, so the dynamics engine stays authoritative.
+  \item \textbf{Blocking / wake model}: upwind robots reduce the effective wind on downwind neighbors with a smooth lateral (Gaussian-like) and downwind falloff.
+  \item \textbf{On-screen wind arrow}: a red arrow shows direction and scales with magnitude in the Qt-OpenGL visualization.
+  \item \textbf{Units}: controller \texttt{velocity} and wind \texttt{magnitude} are both in \textbf{cm/s}.
+\end{itemize}
+
+\section{Installation \& Build}
+\subsection*{Prerequisites}
+ARGoS (3.0.0-beta or newer) and standard build tools (\texttt{cmake}, \texttt{make}, a C++ compiler).
+
+\subsection*{Get the sources}
+Clone the project from GitHub (GitHub link below):
+\[
+\href{https://github.com/roiSela/epcuk2}{GitHub: ARGoS-based Air Resistance}
+\]
+
+The repository contains the library code under \texttt{src/} and ready-to-run example configs under \texttt{examples/}.
+
+\subsection*{Build \& install the libraries}
+\begin{lstlisting}
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ../src
+make
+sudo make install
+\end{lstlisting}
+If ARGoS cannot find the plugins, reconfigure with an explicit prefix:
+\begin{lstlisting}
+cmake -DCMAKE_BUILD_TYPE=Release ../src -DCMAKE_INSTALL_PREFIX=/usr
+\end{lstlisting}
+
+\subsection*{Build the examples}
+\begin{lstlisting}
+cd examples
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make
+\end{lstlisting}
+
+\section{Running}
+From the \texttt{examples} directory:
+\begin{lstlisting}
+argos3 -c <config-file>.txt
+\end{lstlisting}
+Use the Qt-OpenGL visualization to see the wind arrow and RAB rays.
+
+\section{Configuration}
+Global wind is set once per experiment:
+\begin{lstlisting}
+<configuration>
+  <air_resistance angle_deg="0" magnitude="15.0"/>
+</configuration>
+\end{lstlisting}
+
+Each robot controller declares a target speed and uses RAB for wake logic:
+\begin{lstlisting}
+<controllers>
+  <air_resistance_controller id="airbot"
+      library="build/lib/controllers/air_resistance/libair_resistance">
+    <actuators>
+      <differential_steering implementation="default"/>
+      <range_and_bearing implementation="default"/>
+    </actuators>
+    <sensors>
+      <positioning implementation="default"/>
+      <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+    </sensors>
+    <params velocity="15.0"/>
+  </air_resistance_controller>
+</controllers>
+\end{lstlisting}
+
+\section{Examples}
+Each example follows the ARGoS gallery style: \emph{what it shows}, \emph{how to run}, \emph{what to observe}, and a figure. 
+
+\subsection{Blocked vs Unblocked (3 e-puck2)}
+\textbf{Shows:} A leader acts as an upwind blocker. A follower directly behind is shielded and moves upwind; a sideways follower is not fully shielded and struggles.
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c airResistance_blocked_vs_unblocked.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} With wind magnitude equal to controller velocity, the unshielded robot is still while the shielded one advances.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{blocked_vs_unblocked.png}
+  \caption{Blocked vs Unblocked. The follower in the wake progresses upwind; the offset follower does not.}
+  \label{fig:blocked_vs_unblocked}
+\end{figure}
+\FloatBarrier
+
+\subsection{Two Robots --- No Blocking (parallel columns)}
+\textbf{Shows:} Two e-puck2 separated laterally so their wakes do not overlap; both feel the full wind.
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c airResistance_two_no_block.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} Same behavior for both; if wind $=$ drive speed, both are still, if wind $>$ drive speed, both robots will go down-wind etc..
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{two_no_block.png}
+  \caption{Two robots in parallel columns: no wake overlap, both exposed to wind, because wind $=$ drive speed both are still.}
+  \label{fig:two_no_block}
+\end{figure}
+\FloatBarrier
+
+\subsection{Two Robots with a Blocker (1 leader, 2 followers)}
+\textbf{Shows:} A leader upwind; two followers slightly spread in $Y$ but still within the wake core. Both are partially shielded.
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c airResistance_two_with_block.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} Both followers advance upwind more than an unshielded unit (see previous example); small lateral offsets still benefit if inside the wake.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{two_with_block.png}
+  \caption{Two followers behind a single blocker; both benefit from partial shielding.}
+  \label{fig:two_with_block}
+\end{figure}
+\FloatBarrier
+
+\subsection{Three in a Row (wake chaining)}
+\textbf{Shows:} Three e-puck2 aligned with the wind: leader $\rightarrow$ follower $\rightarrow$ follower. The first follower gains the most; the third, farther downwind, gains less due to wake fade.
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c airResistance_three_in_row.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} The first follower progresses fastest; the second follower still benefits but less.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{three_in_row.png}
+  \caption{Wake chaining with three robots aligned downwind, Because wind $=$ in this example, the leader does not move and the follower is getting closer to it thereby getting more coverage and going faster, distancing itself from its own follower.}
+  \label{fig:three_in_row}
+\end{figure}
+\FloatBarrier
+
+\subsection{Foot-bot Wake Demo (multi-body)}
+\textbf{Shows:} The same wake mechanism with foot-bots (multi-body model).
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c airResistance_foot_bot_blocking.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} The downwind foot-bot gains upwind progress compared to an unshielded peer.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{footbot_blocking.png}
+  \caption{Wake effect with foot-bots (multi-body dynamics).}
+  \label{fig:footbot_blocking}
+\end{figure}
+\FloatBarrier
+
+\subsection{Crosswind ``Crab'' Control (foot-bot)}
+\textbf{Shows:} Two foot-bots under a crosswind from $+Y$. The \emph{base} controller drifts while going west; the \emph{wind-aware} controller yaws slightly into the wind and tracks west more cleanly.
+
+\noindent\textbf{Run}
+\begin{lstlisting}
+argos3 -c wind_crab_footbot.txt
+\end{lstlisting}
+
+\noindent\textbf{Observe} Compare the ground tracks: the wind-aware robot maintains the intended heading with less lateral error.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.85\linewidth]{wind_crab_footbot.png}
+  \caption{Crosswind compensation: wind-aware controller crabs into the wind.}
+  \label{fig:wind_crab_footbot}
+\end{figure}
+\FloatBarrier
+
+This example also goes to show how one can inherit from the AirResistance base class and modify/extend its methods.
+
+\section{How it Works (Brief)}
+\begin{itemize}
+  \item \textbf{Reading config:} wind angle/magnitude are parsed once from \texttt{<configuration><air\_resistance .../>}.
+  \item \textbf{Broadcasting radius:} each robot encodes an effective body radius in a RAB byte; neighbors use it to evaluate wake overlap.
+  \item \textbf{Blocking model:} upwind neighbors reduce effective wind via (i) lateral Gaussian coverage across columns and (ii) downwind fade; an upwind gate prevents side-by-side false positives.
+  \item \textbf{Impulse application:} per-tick, wind and drive impulses are accumulated and applied post physics step at the body COM.
+\end{itemize}
+
+\section{Tuning Tips}
+\begin{itemize}
+  \item Set \texttt{magnitude} $\approx$ \texttt{velocity} to make differences obvious (unshielded $\approx$ stationary; shielded moves upwind).
+  \item Increase \texttt{magnitude} and align robots within ${\sim}1$--$2$ body radii laterally to emphasize wake effects.
+  \item Place followers at increasing downwind distances to visualize wake fade.
+\end{itemize}
+
+\section{Troubleshooting}
+\begin{itemize}
+  \item \textbf{No wind arrow:} ensure Qt-OpenGL visualization and that the user-functions library is loaded.
+  \item \textbf{Robot not moving:} if wind $\approx$ drive and the robot is unshielded, this can be expected; adjust either value.
+  \item \textbf{Plugins not found:} rebuild with \texttt{-DCMAKE\_INSTALL\_PREFIX=/usr} or update your ARGoS plugin path.
+\end{itemize}
+
+\section*{Appendix A: Example Summary Table}
+\begin{center}
+\renewcommand{\arraystretch}{1.1}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\small
+\begin{tabularx}{\linewidth}{@{} l Y l l @{}}
+\toprule
+\textbf{Example} & \textbf{File} & \textbf{Robots} & \textbf{Wind}\\
+\midrule
+Blocked vs Unblocked & \nolinkurl{airResistance_blocked_vs_unblocked.txt} & 3 $\times$ e-puck2 & $+X$, 15 cm/s \\
+Two robots --- no blocking & \nolinkurl{airResistance_two_no_block.txt} & 2 $\times$ e-puck2 & $+X$, 10 cm/s \\
+Two robots with a blocker & \nolinkurl{airResistance_two_with_block.txt} & 3 $\times$ e-puck2 & $+X$, 10 cm/s \\
+Three in a row & \nolinkurl{airResistance_three_in_row.txt} & 3 $\times$ e-puck2 & $+X$, 15 cm/s \\
+Foot-bot wake demo & \nolinkurl{airResistance_foot_bot_blocking.txt} & 2 $\times$ foot-bot & $+X$, 25 cm/s \\
+Crosswind crab control & \nolinkurl{wind_crab_footbot.txt} & 2 $\times$ foot-bot & $+Y$, 15 cm/s \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section*{Appendix B: XML Snippets (Copy/Paste)}
+\subsection*{Global wind}
+\begin{lstlisting}
+<configuration>
+  <air_resistance angle_deg="0" magnitude="15.0"/>
+</configuration>
+\end{lstlisting}
+
+\subsection*{Controller block}
+\begin{lstlisting}
+<controllers>
+  <air_resistance_controller id="airbot"
+      library="build/lib/controllers/air_resistance/libair_resistance">
+    <actuators>
+      <differential_steering implementation="default"/>
+      <range_and_bearing implementation="default"/>
+    </actuators>
+    <sensors>
+      <positioning implementation="default"/>
+      <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+    </sensors>
+    <params velocity="15.0"/>
+  </air_resistance_controller>
+</controllers>
+\end{lstlisting}
+
+\end{document}
