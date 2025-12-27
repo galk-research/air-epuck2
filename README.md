@@ -52,11 +52,11 @@ Provide a clean ARGoS plugin + examples that:
 
 ---
 
-## Credit / provenance (required)
+## Credit / provenance
 This repository was built on top of an existing **ARGoS e-puck2 plugin skeleton**.
 
-**Upstream repository:** `<PUT ORIGINAL REPO URL HERE>`  
-**Upstream revision:** `<PUT COMMIT/TAG HERE>`
+**Upstream repository:** `<https://gitlab.com/uniluxembourg/snt/pcog/adars/e-puck2/-/tree/main?ref_type=heads>`  
+
 
 The upstream repository requests the following citation if the e-puck2 plug-in is used in research:
 
