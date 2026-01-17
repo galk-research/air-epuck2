@@ -1,2 +1,2 @@
 add_subdirectory(air_resistance)
-add_subdirectory(wind_aware)
+
