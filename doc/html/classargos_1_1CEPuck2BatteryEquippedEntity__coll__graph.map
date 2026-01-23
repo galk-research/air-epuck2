@@ -1,6 +1,0 @@
-<map id="argos::CEPuck2BatteryEquippedEntity" name="argos::CEPuck2BatteryEquippedEntity">
-<area shape="rect" id="node1" title=" " alt="" coords="220,81,435,123"/>
-<area shape="rect" id="node3" href="$classargos_1_1CEPuck2BatteryDischargeModel.html" title=" " alt="" coords="109,185,327,227"/>
-<area shape="rect" id="node2" title=" " alt="" coords="294,5,361,32"/>
-<area shape="rect" id="node4" title=" " alt="" coords="5,89,196,115"/>
-</map>

@@ -1,6 +1,0 @@
-<map id="argos::CEPuck2GroundRotZOnlySensor" name="argos::CEPuck2GroundRotZOnlySensor">
-<area shape="rect" id="node1" title=" " alt="" coords="63,155,279,196"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,80,136,107"/>
-<area shape="rect" id="node3" href="$classargos_1_1CCI__Epuck2GroundSensor.html" title=" " alt="" coords="161,80,381,107"/>
-<area shape="rect" id="node4" title=" " alt="" coords="223,5,318,32"/>
-</map>

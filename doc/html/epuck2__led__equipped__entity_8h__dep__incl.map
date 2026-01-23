@@ -1,8 +1,0 @@
-<map id="src/plugins/robots/e&#45;puck2/simulator/epuck2_led_equipped_entity.h" name="src/plugins/robots/e&#45;puck2/simulator/epuck2_led_equipped_entity.h">
-<area shape="rect" id="node1" title=" " alt="" coords="303,5,477,61"/>
-<area shape="rect" id="node2" href="$epuck2__entity_8cpp.html" title=" " alt="" coords="5,109,180,165"/>
-<area shape="rect" id="node3" href="$epuck2__led__default__actuator_8h.html" title=" " alt="" coords="204,109,379,165"/>
-<area shape="rect" id="node5" href="$epuck2__led__equipped__entity_8cpp.html" title=" " alt="" coords="403,109,577,165"/>
-<area shape="rect" id="node6" href="$qtopengl__epuck2_8cpp.html" title=" " alt="" coords="601,109,784,165"/>
-<area shape="rect" id="node4" href="$epuck2__led__default__actuator_8cpp.html" title=" " alt="" coords="204,213,379,269"/>
-</map>

@@ -1,8 +1,0 @@
-<map id="argos::CEPuck2TOFDefaultSensor" name="argos::CEPuck2TOFDefaultSensor">
-<area shape="rect" id="node1" title=" " alt="" coords="171,185,357,227"/>
-<area shape="rect" id="node2" title=" " alt="" coords="5,89,136,115"/>
-<area shape="rect" id="node3" href="$classargos_1_1CCI__EPuck2TOFSensor.html" title=" " alt="" coords="161,89,367,115"/>
-<area shape="rect" id="node4" title=" " alt="" coords="217,5,311,32"/>
-<area shape="rect" id="node5" href="$classargos_1_1CEPuck2TOFEquippedEntity.html" title=" " alt="" coords="391,81,590,123"/>
-<area shape="rect" id="node6" title=" " alt="" coords="457,5,524,32"/>
-</map>

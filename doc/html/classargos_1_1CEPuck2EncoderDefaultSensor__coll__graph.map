@@ -1,9 +1,0 @@
-<map id="argos::CEPuck2EncoderDefaultSensor" name="argos::CEPuck2EncoderDefaultSensor">
-<area shape="rect" id="node1" title=" " alt="" coords="708,57,916,98"/>
-<area shape="rect" id="node2" title=" " alt="" coords="366,5,497,32"/>
-<area shape="rect" id="node3" href="$classargos_1_1CCI__EPuck2EncoderSensor.html" title=" " alt="" coords="338,57,525,98"/>
-<area shape="rect" id="node4" title=" " alt="" coords="51,9,146,36"/>
-<area shape="rect" id="node5" href="$structargos_1_1CCI__EPuck2EncoderSensor_1_1SReading.html" title=" " alt="" coords="5,61,192,102"/>
-<area shape="rect" id="node6" href="$classargos_1_1CEPuck2EncoderEquippedEntity.html" title=" " alt="" coords="321,122,541,163"/>
-<area shape="rect" id="node7" title=" " alt="" coords="65,129,132,156"/>
-</map>
