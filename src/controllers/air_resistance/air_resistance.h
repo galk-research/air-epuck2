@@ -41,7 +41,7 @@ namespace argos {
       virtual Real     GetYawRadians() const;
 
       /* devices */
-      CCI_DifferentialSteeringActuator* m_pcWheels = nullptr; // unused when driving by impulse
+      CCI_DifferentialSteeringActuator* m_pcWheels = nullptr; // unused when driving by impulse, optional: used by derived controllers for yaw control
       CCI_PositioningSensor*            m_pcPos    = nullptr;
       CCI_RangeAndBearingSensor*        m_pcRABSens= nullptr;
       CCI_RangeAndBearingActuator*      m_pcRABAct = nullptr;
@@ -52,6 +52,18 @@ namespace argos {
 
       /* simple fallback radius broadcast (meters) */
       Real m_fSelfRadiusM = 0.04f;
+
+      /* Wake / shielding tunables (defaults match current hardcoded behavior) */
+      /* Wake parameters are expressed in multiples of the blocking robot radius (dimensionless). */
+
+      Real m_fWakeLateralReachRadii = 3.0;  /* width: larger => wider wake (units: blocker radii) */
+      Real m_fWakeShadowLengthRadii = 4.0;  /* length: larger => longer wake (units: blocker radii) */
+      Real m_fWakeGammaBoost        = 2.0;  /* shape: 1.0 disables, >1 boosts mid-range */
+      Real m_fWakeUpwindGateRadii   = 0.5;  /* ignore blockers closer than this (units: blocker radii) */
+
+      /* Sanity window for advertised radius in RAB Data[0] (meters) */
+      Real m_fAdvRadiusMinM = 0.005; /* 5 mm  */
+      Real m_fAdvRadiusMaxM = 0.20;  /* 20 cm */
 
       /* cached physics */
       bool     m_bBodyReady = false;

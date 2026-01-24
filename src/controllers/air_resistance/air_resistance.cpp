@@ -57,6 +57,25 @@ void CAirResistance::Init(TConfigurationNode& t_node)
 
    const Real rad = deg * ARGOS_PI / 180.0;
    m_cWindCms.Set(mag * std::cos(rad), mag * std::sin(rad));
+   
+   /* Optional wake/shielding tunables (all optional; defaults preserve behavior) */
+   GetNodeAttributeOrDefault(tAir, "lateral_reach_radii",  m_fWakeLateralReachRadii, m_fWakeLateralReachRadii);
+   GetNodeAttributeOrDefault(tAir, "shadow_length_radii",  m_fWakeShadowLengthRadii, m_fWakeShadowLengthRadii);
+   GetNodeAttributeOrDefault(tAir, "gamma_boost",          m_fWakeGammaBoost,        m_fWakeGammaBoost);
+   GetNodeAttributeOrDefault(tAir, "upwind_gate_radii",    m_fWakeUpwindGateRadii,   m_fWakeUpwindGateRadii);
+
+   /* Optional sanity limits for RAB advertised radius */
+   GetNodeAttributeOrDefault(tAir, "adv_radius_min_m",     m_fAdvRadiusMinM,         m_fAdvRadiusMinM);
+   GetNodeAttributeOrDefault(tAir, "adv_radius_max_m",     m_fAdvRadiusMaxM,         m_fAdvRadiusMaxM);
+
+   /* Basic sanity clamps so nonsense values don't break physics */
+   m_fWakeLateralReachRadii = std::max<Real>(0.1, m_fWakeLateralReachRadii);
+   m_fWakeShadowLengthRadii = std::max<Real>(0.1, m_fWakeShadowLengthRadii);
+   m_fWakeGammaBoost        = std::max<Real>(1.0, m_fWakeGammaBoost);
+   m_fWakeUpwindGateRadii   = std::max<Real>(0.0, m_fWakeUpwindGateRadii);
+
+   m_fAdvRadiusMinM = std::max<Real>(0.0001, m_fAdvRadiusMinM);
+   m_fAdvRadiusMaxM = std::max<Real>(m_fAdvRadiusMinM, m_fAdvRadiusMaxM);
 }
 
 /* --------------------------------------------------------------- */
@@ -160,17 +179,15 @@ bool CAirResistance::IsBlockedByRAB(Real& fOutReduction) const
    if(m_cWindCms.Length() < 1e-9) return false;
 
    /* --- Tunables (geometry-space; not exposed via XML) --- */
-   const Real lateral_reach_radii  = 3.0;  /* lateral Gaussian reach in blocker radii */
-   const Real shadow_length_radii  = 4.0;  /* downwind fade length in blocker radii */
-   const Real gamma_boost          = 2.0;  /* non-linear boost: 1 - (1 - x)^gamma_boost ; 1.0 disables */
+   const Real lateral_reach_radii = m_fWakeLateralReachRadii; /* lateral Gaussian reach in blocker radii */
+   const Real shadow_length_radii = m_fWakeShadowLengthRadii; /* downwind fade length in blocker radii */
+   const Real gamma_boost         = m_fWakeGammaBoost;	/* non-linear boost: 1 - (1 - x)^gamma_boost ; 1.0 disables */
+   const Real upwind_gate_radii   = m_fWakeUpwindGateRadii;	   /* Robustness gate: require a minimum upwind separation to avoid side-by-side false positives. A follower must be at least this many radii behind the blocker before any wake applies. */
 
-   /* Robustness gate: require a minimum upwind separation to avoid side-by-side false positives.
-      A follower must be at least this many radii behind the blocker before any wake applies. */
-   const Real upwind_gate_radii    = 0.5;  /* ≥0.5 radii recommended for e-puck2 */
+/* Sanity window for advertised radius (meters) */
+   const Real ADV_RADIUS_MIN_M    = m_fAdvRadiusMinM;
+   const Real ADV_RADIUS_MAX_M    = m_fAdvRadiusMaxM;
 
-   /* Sanity window for advertised radius (meters) */
-   constexpr Real ADV_RADIUS_MIN_M = 0.005; /* 5 mm  */
-   constexpr Real ADV_RADIUS_MAX_M = 0.20;  /* 20 cm */
 
    /* Unit wind direction in world frame */
    CVector2 wind_dir_world = m_cWindCms;

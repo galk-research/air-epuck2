@@ -6,7 +6,14 @@
   </framework>
 
   <configuration>
-    <air_resistance angle_deg="0" magnitude="10.0"/>
+    <air_resistance
+      angle_deg="0"
+      magnitude="10.0"
+      lateral_reach_radii="3.0"
+      shadow_length_radii="4.0"
+      gamma_boost="2.0"
+      upwind_gate_radii="0.5"
+    />
   </configuration>
 
   <controllers>
