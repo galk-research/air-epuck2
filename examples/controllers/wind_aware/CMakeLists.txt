@@ -6,10 +6,8 @@ target_include_directories(wind_aware_air_resistance PRIVATE
   ${CMAKE_SOURCE_DIR}/src/controllers/air_resistance
 )
 
-# If you already created air_resistance_base (static lib), link it:
-# target_link_libraries(wind_aware_air_resistance air_resistance_base)
-
 target_link_libraries(wind_aware_air_resistance
+  air_resistance_base
   argos3core_simulator
   argos3plugin_simulator_genericrobot
   argos3plugin_simulator_dynamics2d

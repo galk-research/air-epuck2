@@ -354,5 +354,4 @@ void CAirResistance::ControlStep()
 }
 
 /* --------------------------------------------------------------- */
-REGISTER_CONTROLLER(CAirResistance, "air_resistance_controller")
 

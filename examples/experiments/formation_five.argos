@@ -1,0 +1,144 @@
+<?xml version="1.0"?>
+<argos-configuration>
+  <framework>
+    <system threads="1"/>
+    <experiment length="6000" ticks_per_second="10" random_seed="42"/>
+  </framework>
+
+  <configuration>
+    <!-- Wind along +X -->
+    <air_resistance angle_deg="0" magnitude="15.0"/>
+  </configuration>
+
+  <controllers>
+    <!-- Leader -->
+    <formation_template_controller id="leader"
+      library="build/lib/controllers/formation_template/libformation_template">
+      <actuators>
+        <differential_steering implementation="default"/>
+        <range_and_bearing implementation="default"/>
+      </actuators>
+      <sensors>
+        <positioning implementation="default"/>
+        <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+      </sensors>
+      <params velocity="10.0" id="0" leader_id="0" spacing_m="0.25"
+              bearing_offset_deg="0" />
+    </formation_template_controller>
+
+    <!-- V wings -->
+    <formation_template_controller id="left1"
+      library="build/lib/controllers/formation_template/libformation_template">
+      <actuators>
+        <differential_steering implementation="default"/>
+        <range_and_bearing implementation="default"/>
+      </actuators>
+      <sensors>
+        <positioning implementation="default"/>
+        <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+      </sensors>
+      <params velocity="10.0" id="1" leader_id="0" spacing_m="0.25"
+              bearing_offset_deg="30" />
+    </formation_template_controller>
+
+    <formation_template_controller id="right1"
+      library="build/lib/controllers/formation_template/libformation_template">
+      <actuators>
+        <differential_steering implementation="default"/>
+        <range_and_bearing implementation="default"/>
+      </actuators>
+      <sensors>
+        <positioning implementation="default"/>
+        <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+      </sensors>
+      <params velocity="10.0" id="2" leader_id="0" spacing_m="0.25"
+              bearing_offset_deg="-30" />
+    </formation_template_controller>
+
+    <formation_template_controller id="left2"
+      library="build/lib/controllers/formation_template/libformation_template">
+      <actuators>
+        <differential_steering implementation="default"/>
+        <range_and_bearing implementation="default"/>
+      </actuators>
+      <sensors>
+        <positioning implementation="default"/>
+        <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+      </sensors>
+      <params velocity="10.0" id="3" leader_id="0" spacing_m="0.35"
+              bearing_offset_deg="45" />
+    </formation_template_controller>
+
+    <formation_template_controller id="right2"
+      library="build/lib/controllers/formation_template/libformation_template">
+      <actuators>
+        <differential_steering implementation="default"/>
+        <range_and_bearing implementation="default"/>
+      </actuators>
+      <sensors>
+        <positioning implementation="default"/>
+        <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
+      </sensors>
+      <params velocity="10.0" id="4" leader_id="0" spacing_m="0.35"
+              bearing_offset_deg="-45" />
+    </formation_template_controller>
+  </controllers>
+
+  <arena size="3,3,1" center="0,0,0.5">
+
+    <!-- Leader at origin (facing 180° => toward -X) -->
+    <e-puck2 id="E0" rab_range="2" rab_data_size="2">
+      <body position="0.00,0.00,0" orientation="180,0,0"/>
+      <controller config="leader"/>
+    </e-puck2>
+
+    <!-- V formation initial positions (closer so RAB definitely sees leader) -->
+    <e-puck2 id="E1" rab_range="2" rab_data_size="2">
+      <body position="0.25, 0.15,0" orientation="180,0,0"/>
+      <controller config="left1"/>
+    </e-puck2>
+
+    <e-puck2 id="E2" rab_range="2" rab_data_size="2">
+      <body position="0.25,-0.15,0" orientation="180,0,0"/>
+      <controller config="right1"/>
+    </e-puck2>
+
+    <e-puck2 id="E3" rab_range="2" rab_data_size="2">
+      <body position="0.45, 0.30,0" orientation="180,0,0"/>
+      <controller config="left2"/>
+    </e-puck2>
+
+    <e-puck2 id="E4" rab_range="2" rab_data_size="2">
+      <body position="0.45,-0.30,0" orientation="180,0,0"/>
+      <controller config="right2"/>
+    </e-puck2>
+
+  </arena>
+
+  <physics_engines>
+    <dynamics2d id="dyn2d"/>
+  </physics_engines>
+
+  <media>
+    <range_and_bearing id="rab"/>
+  </media>
+
+  <loop_functions
+    library="build/lib/loop_functions/wind_loop_functions/libwind_loop_functions"
+    label="wind_loop_functions"/>
+
+  <visualization>
+    <qt-opengl>
+      <user_functions
+        library="build/lib/loop_functions/wind_loop_functions/libwind_qt_user_functions"
+        label="wind_qt_user_functions"/>
+      <camera>
+        <placements>
+          <placement index="0" position="0,0,6" look_at="0,0,0" up="0,1,0" lens_focal_length="60"/>
+        </placements>
+      </camera>
+    </qt-opengl>
+  </visualization>
+
+</argos-configuration>
+

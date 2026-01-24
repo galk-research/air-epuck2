@@ -46,6 +46,7 @@ add_subdirectory(src)
 # ---------------------------
 option(BUILD_EXAMPLE_CONTROLLERS "Build example controllers under examples/controllers" ON)
 if(BUILD_EXAMPLE_CONTROLLERS)
-  add_subdirectory(examples/controllers/wind_aware)
+  add_subdirectory(examples/controllers)
 endif()
+
 

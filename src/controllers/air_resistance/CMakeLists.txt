@@ -1,11 +1,29 @@
+# Base implementation compiled once
+add_library(air_resistance_base STATIC
+  air_resistance.cpp
+)
+
+target_include_directories(air_resistance_base PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(air_resistance_base
+  argos3core_simulator
+  argos3plugin_simulator_genericrobot
+  argos3plugin_simulator_dynamics2d
+)
+
+# ARGoS module that registers the base controller
 add_library(air_resistance MODULE
-        air_resistance.cpp
-        air_resistance.h)
+  air_resistance_register.cpp
+  air_resistance.h
+)
 
 target_link_libraries(air_resistance
-        argos3core_simulator
-        argos3plugin_simulator_genericrobot)  # stays generic
+  air_resistance_base
+)
 
-# (Optional) If your toolchain needs it for Chipmunk symbols during link:
-# target_link_libraries(air_resistance argos3plugin_simulator_dynamics2d)
+set_target_properties(air_resistance PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/controllers/air_resistance
+)
 
