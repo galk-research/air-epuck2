@@ -22,6 +22,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,calc,decorations.pathreplacing}
 \usepackage{seqsplit}         % break long identifiers if needed
+\usepackage{microtype}
 
 % Improve line-breaking / avoid overfull boxes a bit
 \emergencystretch=3em
@@ -32,9 +33,15 @@
   columns=fullflexible,
   frame=single,
   breaklines=true,
+  breakatwhitespace=true,
   showstringspaces=false,
   tabsize=2,
-  upquote=true
+  upquote=true,
+  % keep frames inside the page
+  xleftmargin=0.5em,
+  xrightmargin=0.5em,
+  framexleftmargin=0.5em,
+  framexrightmargin=0.5em
 }
 \lstdefinelanguage{XML}{
   morestring=[b]",
@@ -47,6 +54,7 @@
   morecomment=[l]{//}
 }
 \lstset{style=code}
+\setlist{leftmargin=*,itemsep=3pt,topsep=3pt}
 
 % ---------- Math helpers ----------
 \DeclareMathOperator{\smoothstep}{smoothstep}
@@ -58,7 +66,7 @@
 \newcommand{\codeid}[1]{\texttt{\seqsplit{#1}}} % breaks inside long identifiers
 
 % ---------- Title ----------
-\title{ARGoS Wind / Air Resistance — Developer Guide}
+\title{ARGoS Wind / Air Resistance — Developer Manual}
 \author{Roi Sela}
 \date{October 2025}
 
@@ -66,67 +74,184 @@
 \maketitle
 
 \begin{center}
-\small Repository: \href{https://github.com/roiSela/epcuk2}{project link}
+\small Repository: \href{https://github.com/roiSela/air-epuck2}{roiSela/air-epuck2}
 \end{center}
 
+\newpage
 \tableofcontents
+\newpage
 
-\section*{Audience \& Scope}
-This guide targets developers who will extend, maintain, or embed the project's wind / air-resistance behavior in ARGoS~3 (dynamics2d / Chipmunk engine). It covers architecture, the impulse pipeline, aerodynamic blocking via RAB, configuration schema, and extension points. Language-agnostic pseudocode is provided for core functions.
+\section{Audience and Scope}
+This guide targets developers who extend, maintain, or embed this project's wind / air-resistance behavior in ARGoS~3.
+It covers: repository layout, the impulse pipeline, aerodynamic blocking via RAB, configuration schema (including wake tunables),
+the dynamics2d/Chipmunk integration point, and extension points for derived controllers. It also includes pseudocode aligned with
+the C++ implementation.
 
 \section{Repository Overview}
-\begin{tabularx}{\textwidth}{@{}p{.45\textwidth}X@{}}
+\begin{tabularx}{\textwidth}{@{}p{.48\textwidth}X@{}}
 \toprule
 Path & Purpose \\
 \midrule
-\codepath{controllers/air_resistance} & Base controller (\texttt{CAirResistance}): wind + drive impulse pipeline, RAB-based aerodynamic blocking. \\
-\codepath{controllers/wind_aware} & Example derived controller (behavior details are documented in the user manual). \\
-\codepath{loop_functions/wind_loop_functions} & Logic-only loop functions to read wind from XML and expose it. \\
-\codepath{loop_functions/wind_loop_functions (Qt)} & Qt user functions that draw the wind vector arrow in the world view. \\
-\codepath{examples/} & Minimal runnable ARGoS configs (documented in the user manual). \\
+\codepath{src/controllers/air_resistance/} &
+Base controller (\codeid{CAirResistance}): wind + drive impulse pipeline, RAB-based aerodynamic blocking (wake). \\
+\codepath{examples/controllers/wind_aware/} &
+Example derived controller: crosswind compensation (“crabbing”) built on top of \codeid{CAirResistance}. \\
+\codepath{src/controllers/formation_template/} (if enabled) &
+Example derived controller: multi-robot coordination template under wind while preserving the base aerodynamics pipeline. \\
+\codepath{src/loop_functions/wind_loop_functions/} &
+Loop-functions plugin: reads global wind from XML, provides shared access for visualization, and other experiment-wide logic. \\
+\codepath{src/loop_functions/wind_loop_functions/} (Qt user-functions) &
+Qt-OpenGL user-functions plugin that draws the wind vector arrow in the world view. \\
+\codepath{examples/} &
+Runnable ARGoS experiment configurations (\codeid{.argos}) used in the user manual. \\
+\codepath{doc/} &
+LaTeX manuals + Doxygen configuration (\codeid{Doxyfile}); generated HTML is not committed. \\
 \bottomrule
 \end{tabularx}
 
+\section{ARGoS Engines Used by This Project}
+ARGoS is modular: a configuration file selects which \emph{plugins} are used for physics, robot models, visualization, and media.
+
+\subsection{Physics engine: \texttt{dynamics2d} (Chipmunk)}
+This project integrates at the \textbf{dynamics2d} physics level. In ARGoS~3, \texttt{dynamics2d} is a 2D physics-engine plugin
+whose rigid-body backend is \textbf{Chipmunk}. The wind/drive forces are applied as \textbf{Chipmunk impulses} to the underlying
+\texttt{cpBody} after each physics tick.
+
+In the experiment XML, the physics engine is selected explicitly:
+\begin{lstlisting}[language=XML]
+<physics_engines>
+  <dynamics2d id="dyn2d"/>
+</physics_engines>
+\end{lstlisting}
+
+\paragraph{Why “Chipmunk callbacks” appear in this codebase.}
+Chipmunk provides a \emph{post-step callback} mechanism to safely apply impulses after collision resolution. ARGoS dynamics2d exposes
+Chipmunk bodies internally; this project schedules one post-step callback per tick to apply the accumulated impulse vector
+(see Sec.~\ref{sec:impulse-pipeline}).
+
+\paragraph{What if a different physics engine is used?}
+If the experiment selects a different physics engine (e.g., \texttt{dynamics3d}), there is no Chipmunk \texttt{cpBody}.
+Therefore, this project’s impulse integration is designed for \textbf{dynamics2d}. Experiments must include \texttt{dynamics2d}
+for the wind/impulse behavior to take effect.
+
+\subsection{Robot model plugins (e-puck2, foot-bot, others)}
+The controller itself is \textbf{robot-agnostic} at the ARGoS interface level (generic sensors/actuators, see Sec.~\ref{sec:robot-agnostic}),
+but the experiment chooses specific robot model plugins:
+\begin{lstlisting}[language=XML]
+<framework>
+  ...
+</framework>
+
+<!-- Example robot plugins loaded by ARGoS at runtime -->
+<!-- (e-puck2, foot-bot, etc.) -->
+\end{lstlisting}
+
+\subsection{Visualization engine: Qt-OpenGL}
+The wind arrow is drawn by a Qt user-functions plugin (optional). In XML it appears under:
+\begin{lstlisting}[language=XML]
+<visualization>
+  <qt-opengl>
+    <user_functions library="..." label="wind_qt_user_functions"/>
+  </qt-opengl>
+</visualization>
+\end{lstlisting}
+
 \section{Architecture}
+\subsection{Robot-agnostic controller design}
+\label{sec:robot-agnostic}
+The base controller \codeid{CAirResistance} uses only \textbf{generic} ARGoS interfaces:
+\begin{itemize}
+  \item \codeid{CCI\_DifferentialSteeringActuator}
+  \item \codeid{CCI\_PositioningSensor}
+  \item \codeid{CCI\_RangeAndBearingSensor} / \codeid{Actuator}
+\end{itemize}
+No e-puck2-specific CCI interfaces are required by the core implementation. Robot specificity belongs in \textbf{experiment XML}
+(robot type tags, robot plugins to load), and in optional \textbf{example controllers}.
+
 \subsection{Core Controller: \texttt{CAirResistance}}
 \paragraph{Lifecycle and Extensibility.}
-\texttt{CAirResistance} derives from \texttt{CCI\_Controller}. Lifecycle methods are virtual and designed for subclassing.
+\codeid{CAirResistance} derives from \codeid{CCI\_Controller}. Lifecycle methods and key helpers are \textbf{virtual} and designed
+for subclassing.
 
 \paragraph{Important protected hooks (what they do).}
-\begin{itemize}[leftmargin=*,itemsep=4pt]
-  \item \textbf{\texttt{EnsurePhysicsHandle()}} — Idempotently cache the Chipmunk body (pointer, mass, space, COM) and derive the robot's effective radius in meters from the AABB. Safe to call every tick.
-  \item \textbf{\texttt{GetYawRadians()}} — Return yaw \(\psi\) (world frame) from the positioning sensor; used for the forward unit vector \(\unitvect{f}(\psi)\).
-  \item \textbf{\texttt{HandleAerodynamicsPreStep()}} — Reset \(\vect{J}_{\mathrm{sum}}\); add the wind impulse using the current effective wind \(\vect{w}_{\mathrm{eff}}\); broadcast the RAB radius (mm). No post-step scheduling here.
-  \item \textbf{\texttt{HandleAerodynamicsPostStep()}} — Register a Chipmunk post-step callback to apply \(\vect{J}_{\mathrm{sum}}\) after collisions.
-  \item \textbf{\texttt{ComputeEffectiveWind()}} — Compute and return \(\vect{w}_{\mathrm{eff}}=(1-r)\vect{w}\) where \(r\) is the wake reduction computed from neighbors (see Sec.~\ref{sec:wake-blocking}).
-  \item \textbf{\texttt{IsBlockedByRAB(Real\& r)}} — From RAB neighbors, compute \(r\in[0,1]\) via geometric overlap of wakes (details in Sec.~\ref{sec:wake-blocking}).
-  \item \textbf{\texttt{DriveImpulse(Real v\_cm\_s)}} — Add forward impulse \(\frac{m}{100}v\,\unitvect{f}(\psi)\) (cm/s \(\rightarrow\) m/s factor 1/100).
-  \item \textbf{\texttt{ApplyWindImpulse()}} — Add \(\frac{m}{100}\,\vect{w}_{\mathrm{eff}}\) to the per-tick accumulator.
+\begin{itemize}[itemsep=4pt]
+  \item \textbf{\codeid{EnsurePhysicsHandle()}} — Cache the Chipmunk body pointer and derive the robot's effective radius (meters)
+  from the AABB. Safe to call every tick.
+  \item \textbf{\codeid{GetYawRadians()}} — Return yaw \(\psi\) (world frame) from the positioning sensor; used for the forward unit vector \(\unitvect{f}(\psi)\).
+  \item \textbf{\codeid{HandleAerodynamicsPreStep()}} — Reset \(\vect{J}_{\mathrm{sum}}\); add wind impulse using \(\vect{w}_{\mathrm{eff}}\); broadcast radius (RAB byte 0).
+  \item \textbf{\codeid{HandleAerodynamicsPostStep()}} — Register a Chipmunk post-step callback to apply \(\vect{J}_{\mathrm{sum}}\) after collisions.
+  \item \textbf{\codeid{ComputeEffectiveWind()}} — Compute \(\vect{w}_{\mathrm{eff}}=(1-r)\vect{w}\) where \(r\) is the wake reduction from neighbors.
+  \item \textbf{\codeid{IsBlockedByRAB(Real\& r)}} — From RAB neighbors, compute \(r\in[0,1]\) via geometric overlap of wakes (Sec.~\ref{sec:wake-blocking}).
+  \item \textbf{\codeid{DriveImpulse(Real v\_cm\_s)}} — Add forward impulse \(\tfrac{m}{100}v\,\unitvect{f}(\psi)\) (cm/s \(\rightarrow\) m/s factor \(1/100\)).
+  \item \textbf{\codeid{ApplyWindImpulse()}} — Add \(\tfrac{m}{100}\,\vect{w}_{\mathrm{eff}}\) to the per-tick accumulator.
 \end{itemize}
 
 \paragraph{Impulse Pipeline (per tick).}
-\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\label{sec:impulse-pipeline}
+\begin{enumerate}[itemsep=2pt]
   \item \textbf{Pre-step}: Reset the impulse accumulator; compute and add the wind impulse (possibly reduced by blocking); broadcast radius via RAB.
   \item \textbf{Drive}: Add a forward drive impulse along current yaw using the desired base speed.
   \item \textbf{Post-step}: Schedule a single Chipmunk \emph{post-step} callback to apply the summed impulse after collisions.
 \end{enumerate}
 
-\paragraph{Physics Integration.}
-We downcast the ARGoS \texttt{dynamics2d} model to either \codeid{CDynamics2DSingleBodyObjectModel} (e-puck2) or \codeid{CDynamics2DMultiBodyObjectModel} (foot-bot). For multi-body robots, body index~0 is treated as the chassis. AABB is used to derive a reasonable self-radius \(R\) (meters), clamped to sane limits.
+\paragraph{AABB (Axis-Aligned Bounding Box).}
+An \textbf{AABB} is the smallest rectangle (in world axes) that contains the robot body: it has min/max corners \((x_{\min},y_{\min})\)
+and \((x_{\max},y_{\max})\). We derive an effective radius \(R\) from its width/height:
+\[
+R \approx \tfrac{1}{2}\max(x_{\max}-x_{\min},\,y_{\max}-y_{\min}).
+\]
+This gives a robust, robot-model-independent scale for wake geometry.
 
-\section{Configuration Interface (recap)}
-Under \verb|<configuration>| declare:
+\section{Physics Integration Details}
+This project integrates with ARGoS dynamics2d object models:
+\begin{itemize}
+  \item \textbf{Single-body robots} (e.g., e-puck2) expose a single Chipmunk \codeid{cpBody}.
+  \item \textbf{Multi-body robots} (e.g., foot-bot) expose multiple Chipmunk bodies; body index 0 is treated as the chassis.
+\end{itemize}
+The controller caches the \codeid{cpBody*} and uses it to apply impulses post-step at the center of mass (COM).
+
+\section{Configuration Interface}
+\subsection{Global configuration}
+Under \verb|<configuration>| declare wind and (optionally) wake tunables:
 \begin{lstlisting}[language=XML]
-<air_resistance angle_deg="0" magnitude="15.0"/>
+<configuration>
+  <air_resistance
+      angle_deg="0"
+      magnitude="15.0"
+      lateral_reach_radii="3.0"
+      shadow_length_radii="4.0"
+      gamma_boost="2.0"
+      upwind_gate_radii="0.5"
+      adv_radius_min_m="0.005"
+      adv_radius_max_m="0.20"/>
+</configuration>
 \end{lstlisting}
-\(\texttt{angle\_deg}\) is the global wind direction (degrees, world frame); \(\texttt{magnitude}\) is wind speed in \si{cm/s}.  
-Each controller instance accepts:
+
+\subsection{Units and meanings}
+\begin{tabularx}{\textwidth}{@{}l p{.26\textwidth} X@{}}
+\toprule
+Attribute & Units & Meaning \\
+\midrule
+\codeid{angle\_deg} & degrees & Wind direction in world frame. \\
+\codeid{magnitude} & cm/s & Wind speed magnitude. \\
+\codeid{lateral\_reach\_radii} & radii & Wake width scale (\(\sigma_\perp = \text{lateral\_reach\_radii}\cdot R\)). \\
+\codeid{shadow\_length\_radii} & radii & Wake length scale (\(L=\text{shadow\_length\_radii}\cdot R\)). \\
+\codeid{gamma\_boost} & unitless & Nonlinear emphasis of mid-range overlaps. \\
+\codeid{upwind\_gate\_radii} & radii & Minimum along-wind gap before wake starts. \\
+\codeid{adv\_radius\_min\_m} & meters & Sanity min for advertised RAB radius. \\
+\codeid{adv\_radius\_max\_m} & meters & Sanity max for advertised RAB radius. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Per-controller parameters}
+Each controller instance can specify a desired base forward speed:
 \begin{lstlisting}[language=XML]
 <params velocity="15.0"/>
 \end{lstlisting}
+\textbf{Units:} \codeid{velocity} is in \si{cm/s}.
 
 \section{Algorithmic Details (with Equations)}
-\subsection{Impulse Model (first definition of \texorpdfstring{\(\vect{w}_{\mathrm{eff}}\)}{weff} + numeric example)}
+\subsection{Impulse Model (definition of \texorpdfstring{\(\vect{w}_{\mathrm{eff}}\)}{weff} + numeric example)}
 Per tick we accumulate world-frame impulses:
 \begin{align}
   \vect{J}_\text{wind}  &= \frac{m}{100}\,\underbrace{\vect{w}_\text{eff}}_{\text{effective wind in \si{cm/s}}},\\
@@ -141,8 +266,8 @@ Here \(m\) is body mass (Chipmunk), \(v_d\) the desired forward speed (\si{cm/s}
 A single post-step callback applies \(\vect{J}_\text{sum}\) at the COM after collisions.
 
 \paragraph{Numeric example (with picture).}
-Let \(m=\SI{0.08}{kg}\), \(v_d=\SI{10}{cm/s}\), and \(\vect{w}=(\SI{20}{cm/s},0)\).  
-If \(r=0.4\Rightarrow \vect{w}_\text{eff}=(\SI{12}{cm/s},0)\).  
+Let \(m=\SI{0.08}{kg}\), \(v_d=\SI{10}{cm/s}\), and \(\vect{w}=(\SI{20}{cm/s},0)\).
+If \(r=0.4\Rightarrow \vect{w}_\text{eff}=(\SI{12}{cm/s},0)\).
 With yaw \(\psi=60^\circ\), \(\unitvect{f}(\psi)=(\cos 60^\circ,\sin 60^\circ)=(0.5,0.866)\).
 \[
 \vect{J}_\text{wind}=\tfrac{0.08}{100}(12,0)=(0.0096,0),\quad
@@ -150,8 +275,7 @@ With yaw \(\psi=60^\circ\), \(\unitvect{f}(\psi)=(\cos 60^\circ,\sin 60^\circ)=(
 \]
 so \(\boxed{\vect{J}_\text{sum}\approx(0.0136,\;0.00693)\ \mathrm{kg\,m/s}}\).
 
-% --------- Your illustration: do not change ----------
-% Figure 1: Visual impulse composition with step-by-step breakdown
+% --------- Illustration: impulse composition (unchanged) ----------
 \begin{figure}[H]
   \centering
   \begin{tikzpicture}[scale=1.4]
@@ -192,7 +316,8 @@ so \(\boxed{\vect{J}_\text{sum}\approx(0.0136,\;0.00693)\ \mathrm{kg\,m/s}}\).
       \node[below,red!70,font=\scriptsize,align=center] at (1.5,0.3) {$\vect{J}_\text{wind} + \vect{J}_\text{drive}$\\$=(0.0136, 0.0069)$ kg·m/s};
     \end{scope}
   \end{tikzpicture}
-  \caption{Impulse composition example with $m=0.08$ kg, $v_d=10$ cm/s, $\vect{w}_\text{eff}=12$ cm/s, and $\psi=60^\circ$. \textbf{Left:} Wind pushes horizontally. \textbf{Middle:} Robot drives at $60^\circ$. \textbf{Right:} Both impulses combine (vector addition) to produce the actual motion impulse applied to the robot.}
+  \caption{Impulse composition example with $m=0.08$ kg, $v_d=10$ cm/s, $\vect{w}_\text{eff}=12$ cm/s, and $\psi=60^\circ$.
+  \textbf{Left:} wind pushes horizontally. \textbf{Middle:} robot drives at $60^\circ$. \textbf{Right:} both impulses combine (vector addition).}
 \end{figure}
 % ----------------------------------------------------
 
@@ -200,7 +325,8 @@ so \(\boxed{\vect{J}_\text{sum}\approx(0.0136,\;0.00693)\ \mathrm{kg\,m/s}}\).
 \label{sec:wake-blocking}
 
 \paragraph{Problem we are solving.}
-We need the shielding effect from an upwind blocker to fade out \emph{smoothly} with downwind distance. If we used a hard cutoff (on/off at some distance), tiny sensor noise or sub-tick motion would make the effect flicker: one tick ``blocked'', next tick ``not blocked''. That produces visible jerks and unstable dynamics. A smooth ramp avoids this.
+We need the shielding effect from an upwind blocker to fade out \emph{smoothly} with downwind distance. A hard cutoff would flicker
+due to tiny motion or sensor noise, producing visible jerks. A smooth ramp avoids this.
 
 For each upwind neighbor \(i\), compute an overlap score
 \begin{equation}
@@ -225,24 +351,23 @@ Here \(\mathcal{N}\) is the set of upwind neighbors; \(\max_i\) means the \emph{
 1 & x\ge b.
 \end{cases}
 \]
-Its slope is zero at both ends, so the blocking grows and dies out gently instead of snapping on and off. In our case we apply it to \(\ell_\parallel-g\) over the interval \([0,L]\), which means: once the follower is a bit downwind of the blocker (past the upwind gate \(g\)), the reduction ramps in smoothly and reaches full effect by distance \(L\).
+Its slope is zero at both ends, so blocking grows and dies out gently instead of snapping on/off.
 
-\paragraph{Parameter meanings (visualized in Fig.~\ref{fig:blocking_geometry} below).}
-\begin{itemize}[leftmargin=*,itemsep=2pt]
-  \item \(\ell_\parallel\): along-wind separation, i.e., the projection of the blocker\(\rightarrow\)follower vector onto the wind direction; it is the \emph{downwind distance from the blocker to the follower} (positive when the follower is downwind).
-  \item \(\ell_\perp\): lateral offset from the wind centerline between the two robots.
-  \item \(R\): robot radius in meters, derived from the AABB of the embodied entity (see Sec.~3); used as the base length scale.
-  \item \(\sigma_\perp = \texttt{lateral\_reach\_radii}\cdot R\): lateral ``width'' of the wake (controls the Gaussian term).
-  \item \(L = \texttt{shadow\_length\_radii}\cdot R\): downwind ``length'' of the wake (the smoothstep interval).
-  \item \(g = \texttt{upwind\_gate\_radii}\cdot R\): small upwind gap to ignore near side-by-side cases before the ramp begins.
-  \item \(\gamma=\texttt{gamma\_boost}\): optional emphasis of mid-range overlaps before clamping to \([0,1]\).
+\paragraph{Parameter meanings (visualized in Fig.~\ref{fig:blocking_geometry}).}
+\begin{itemize}[itemsep=2pt]
+  \item \(\ell_\parallel\): along-wind separation (downwind distance from blocker to follower, positive when follower is downwind).
+  \item \(\ell_\perp\): lateral offset from the wind centerline.
+  \item \(R\): blocker radius in meters (from AABB or advertised via RAB byte 0).
+  \item \(\sigma_\perp = \texttt{lateral\_reach\_radii}\cdot R\): wake width (Gaussian term).
+  \item \(L = \texttt{shadow\_length\_radii}\cdot R\): wake length (smoothstep interval).
+  \item \(g = \texttt{upwind\_gate\_radii}\cdot R\): upwind gate distance before the ramp begins.
+  \item \(\gamma=\texttt{gamma\_boost}\): optional emphasis before clamping to \([0,1]\).
 \end{itemize}
 
-% --------- Your wake-geometry illustration: unchanged ----------
+% --------- Wake-geometry illustration (kept) ----------
 \begin{figure}[H]
   \centering
   \begin{tikzpicture}[scale=1.2]
-    % (unchanged figure from user)
     \draw[-{Latex[length=3mm]}, very thick] (-0.5,0) -- (6.5,0) node[right]{Wind};
     \draw[thick, fill=gray!20] (0,0) circle (0.35);
     \node at (0,0) {\textbf{B}};
@@ -270,69 +395,121 @@ Its slope is zero at both ends, so the blocking grows and dies out gently instea
 % ---------------------------------------------------------------
 
 \paragraph{Two-blocker illustration (max over neighbors).}
-% (Your two-blocker figure kept exactly)
 \begin{figure}[H]
   \centering
   \begin{tikzpicture}[scale=1.05]
-    % Wind axis
     \draw[-{Latex[length=3mm]},very thick] (-0.5,0) -- (7.0,0) node[right,font=\bfseries]{Wind};
-    
-    % Blocker 1 (lower left)
-    \draw[thick, fill=gray!20] (0,0) circle (0.3); 
+    \draw[thick, fill=gray!20] (0,0) circle (0.3);
     \node at (0,0) {\small $B_1$};
     \node[below,font=\scriptsize] at (0,-0.4) {blocker 1};
-    
-    % Blocker 2 (upper, slightly right)
-    \draw[thick, fill=gray!20] (1.2,0.55) circle (0.3); 
+
+    \draw[thick, fill=gray!20] (1.2,0.55) circle (0.3);
     \node at (1.2,0.55) {\small $B_2$};
     \node[above,font=\scriptsize] at (1.2,0.95) {blocker 2};
-    
-    % Follower F (the robot being blocked)
-    \filldraw[red!70] (4.5,0.25) circle (3pt); 
+
+    \filldraw[red!70] (4.5,0.25) circle (3pt);
     \node[above right,font=\small] at (4.5,0.25) {F (follower)};
     \node[below,red!70,font=\scriptsize,align=center] at (4.5,-0.1) {being\\blocked};
-    
-    % Wake boundaries for B1 (blue dashed)
+
     \draw[dashed, blue!70, thick] (0,0) -- (5.8,1.2);
     \draw[dashed, blue!70, thick] (0,0) -- (5.8,-1.0);
     \fill[blue!10, opacity=0.4] (0,0) -- (5.8,1.2) -- (5.8,-1.0) -- cycle;
-    
-    % Wake boundaries for B2 (orange dashed)
+
     \draw[dashed, orange!80!black, thick] (1.2,0.55) -- (6.6,1.8);
     \draw[dashed, orange!80!black, thick] (1.2,0.55) -- (6.6,-0.4);
     \fill[orange!10, opacity=0.3] (1.2,0.55) -- (6.6,1.8) -- (6.6,-0.4) -- cycle;
-    
-    % Labels for r_i values (wake regions)
+
     \node[blue!70,font=\small] at (2.2,0.5) {wake 1: $r_1$};
     \node[orange!80!black,font=\small] at (3.5,1.2) {wake 2: $r_2$};
-    
-    % Final formula (larger box)
-    \node[red!70,font=\small,align=center,draw=red!70,fill=white,rounded corners,thick] 
-      at (5.5,-1.5) {$r=\min\bigl\{1,\gamma\cdot\max(r_1,r_2)\bigr\}$\\
-      \scriptsize (take maximum wake)};
+
+    \node[red!70,font=\small,align=center,draw=red!70,fill=white,rounded corners,thick]
+      at (5.5,-1.5) {$r=\min\{1,\gamma\cdot\max(r_1,r_2)\}$\\
+      \scriptsize (maximum wake dominates)};
   \end{tikzpicture}
-  \caption{Two upwind blockers ($B_1$ and $B_2$) create overlapping wakes. The follower robot F experiences blocking from both. Each blocker produces $r_i$ via \eqref{eq:ri}. The final reduction $r$ is the boosted/clamped \emph{maximum} over all neighbor wakes\textemdash{}meaning F gets blocked by whichever wake is strongest at its position.}
+  \caption{Two upwind blockers ($B_1$ and $B_2$) produce reductions $r_1$ and $r_2$ via \eqref{eq:ri}. The final reduction is the boosted/clamped maximum.}
 \end{figure}
 
+\section{Implementation Map (Math \texorpdfstring{$\rightarrow$}{->} Code Locations)}
+The equations above map directly to the base controller implementation:
+\begin{itemize}
+  \item \textbf{Impulse accumulation} (\(\vect{J}_\text{wind}, \vect{J}_\text{drive}, \vect{J}_\text{sum}\)):
+  \codepath{src/controllers/air_resistance/air_resistance.cpp}:
+  \codeid{HandleAerodynamicsPreStep()}, \codeid{ApplyWindImpulse()}, \codeid{DriveImpulse()}, \codeid{HandleAerodynamicsPostStep()}.
+  \item \textbf{Effective wind} (\(\vect{w}_\text{eff}=(1-r)\vect{w}\)):
+  \codepath{src/controllers/air_resistance/air_resistance.cpp}:
+  \codeid{ComputeEffectiveWind()}.
+  \item \textbf{Wake reduction} (\eqref{eq:ri} and \(r=\min(1,\gamma\cdot\max_i r_i)\)):
+  \codepath{src/controllers/air_resistance/air_resistance.cpp}:
+  \codeid{IsBlockedByRAB(Real\&)} (computes \(\ell_\parallel\), \(\ell_\perp\), lateral Gaussian, smoothstep fade, boost, max, clamp).
+  \item \textbf{Tunables and units} (attributes in \verb|<air_resistance .../>|):
+  \codepath{src/controllers/air_resistance/air_resistance.h} (members) and
+  \codepath{src/controllers/air_resistance/air_resistance.cpp} (read/validate in \codeid{Init()}).
+  \item \textbf{Radius derivation (AABB)}:
+  \codepath{src/controllers/air_resistance/air_resistance.cpp}:
+  \codeid{EnsurePhysicsHandle()}.
+\end{itemize}
+
+\section{RAB Sensor: Role, Contract, Alternatives}
+\subsection{Role}
+The Range-And-Bearing (RAB) medium is used as a lightweight local-neighborhood channel. This project uses it for:
+\begin{itemize}
+  \item \textbf{Wake geometry:} obtain relative range/bearing to neighbors and compute upwind/lateral separations.
+  \item \textbf{Scale exchange:} each robot advertises an effective radius in \textbf{RAB byte 0} (millimeters), so different robot models
+  can interact without hardcoded constants.
+\end{itemize}
+
+\subsection{Contract (byte-level)}
+\begin{itemize}
+  \item \textbf{Byte 0 is reserved} for the advertised radius (mm), written by \codeid{CAirResistance}.
+  \item Derived/user controllers may use \textbf{bytes 1..} for their own coordination messages (IDs, roles, formation state, etc.).
+\end{itemize}
+
+\subsection{Alternatives}
+Alternatives depend on your simulation goals:
+\begin{itemize}
+  \item \textbf{Positioning sensor} could be used for global positions, but then the model depends on global knowledge (not local-only).
+  \item \textbf{ARGoS proximity sensors} do not provide peer identity/range/bearing robustly for this wake geometry.
+  \item \textbf{Custom medium} could encode richer state, but RAB is already standard and fast for local neighbor geometry.
+\end{itemize}
+
 \section{Pseudocode: Core Functions}
-Variables mirror the C++ but remain language-agnostic. Distances in meters unless noted; speeds in \si{cm/s}. Comments use only ASCII to avoid listing-encoding issues.
+Variables mirror the C++ but remain language-agnostic. Distances in meters unless noted; speeds in \si{cm/s}.
 
 \subsection{\texttt{Init(t\_node)}}
 \begin{lstlisting}[language=pseudo]
 function Init(node)
   // devices
-  rab_act  <- GetActuator("range_and_bearing")
-  rab_sen  <- GetSensor  ("range_and_bearing")
-  pos_sen  <- GetSensor  ("positioning")
   wheels   <- GetActuator("differential_steering")
+  pos_sen  <- GetSensor  ("positioning")
+  rab_sen  <- GetSensor  ("range_and_bearing")
+  rab_act  <- GetActuator("range_and_bearing")
 
   // controller params
-  v_desired_cm_s <- ReadParam(node, "velocity", default=10.0)
+  v_desired_cm_s <- ReadParam(node, "velocity", default=5.0)
 
-  // wind from <configuration><air_resistance .../>
-  (angle_deg, magnitude_cm_s) <- ReadGlobalWind()
-  wind_cm_s <- (magnitude_cm_s * cos(rad(angle_deg)),
-                magnitude_cm_s * sin(rad(angle_deg)))
+  // global config: <configuration><air_resistance .../>
+  air <- GetConfigNode("configuration/air_resistance")
+  angle_deg         <- ReadAttr(air, "angle_deg")
+  magnitude_cm_s    <- ReadAttr(air, "magnitude")
+  wind_cm_s         <- magnitude_cm_s * (cos(rad(angle_deg)), sin(rad(angle_deg)))
+
+  // optional wake/shield tunables (defaults preserved if omitted)
+  lateral_reach_radii <- ReadAttrDefault(air, "lateral_reach_radii", 3.0)
+  shadow_length_radii <- ReadAttrDefault(air, "shadow_length_radii", 4.0)
+  gamma_boost         <- ReadAttrDefault(air, "gamma_boost", 2.0)
+  upwind_gate_radii   <- ReadAttrDefault(air, "upwind_gate_radii", 0.5)
+
+  // optional advertised-radius sanity window (meters)
+  adv_radius_min_m <- ReadAttrDefault(air, "adv_radius_min_m", 0.005)
+  adv_radius_max_m <- ReadAttrDefault(air, "adv_radius_max_m", 0.20)
+
+  // clamp obvious nonsense
+  lateral_reach_radii <- max(0.1, lateral_reach_radii)
+  shadow_length_radii <- max(0.1, shadow_length_radii)
+  gamma_boost         <- max(1.0, gamma_boost)
+  upwind_gate_radii   <- max(0.0, upwind_gate_radii)
+  adv_radius_min_m    <- max(0.0001, adv_radius_min_m)
+  adv_radius_max_m    <- max(adv_radius_min_m, adv_radius_max_m)
 end
 \end{lstlisting}
 
@@ -341,21 +518,20 @@ end
 function EnsurePhysicsHandle()
   if body_ready: return
 
-  // fetch entity + embodied component
   entity    <- GetSelfEntity()
   embodied  <- entity.GetComponent("body")
 
-  // derive self radius from AABB (meters), clamp to sane range
+  // AABB = axis-aligned bounding box
   bb    <- embodied.GetBoundingBox()
   width <- bb.MaxCorner.x - bb.MinCorner.x
   depth <- bb.MaxCorner.y - bb.MinCorner.y
   self_radius_m <- 0.5 * max(width, depth)
-  self_radius_m <- Clamp(self_radius_m, 0.01, 0.50)
+  self_radius_m <- Clamp(self_radius_m, adv_radius_min_m, adv_radius_max_m)
 
-  // cache dyn2d body + mass etc.
+  // cache dyn2d body pointer
   model <- GetDynamics2DModelForRobot()
   if model is SingleBody: body <- model.GetBody()
-  else:                   body <- model.GetBody(index=0)  // chassis
+  else:                   body <- model.GetBody(index=0)
   mass_kg <- Chipmunk.GetMass(body)
 
   body_ready <- true
@@ -367,13 +543,10 @@ end
 function HandleAerodynamicsPreStep()
   EnsurePhysicsHandle()
 
-  // reset per-tick accumulator
-  J_sum <- (0, 0)
+  J_sum <- (0, 0)          // reset accumulator (world frame)
+  ApplyWindImpulse()       // adds (mass/100) * w_eff_cm_s
 
-  // wind contribution using effective wind (Sec. 4.1, 4.2)
-  ApplyWindImpulse()
-
-  // RAB broadcast: radius in millimeters (byte 0 only)
+  // RAB broadcast: radius in millimeters (byte 0 reserved)
   if rab_act != null:
       r_mm <- Clamp(round(self_radius_m * 1000), 0, 255)
       rab_act.SetData(0, r_mm)
@@ -385,10 +558,9 @@ end
 function ComputeEffectiveWind()
   if Norm(wind_cm_s) < 1e-9: return wind_cm_s
   r <- 0.0
-  if IsBlockedByRAB(out r):   // r computed by wake model (see Sec. 4.2)
+  if IsBlockedByRAB(out r):
       return max(0, 1 - r) * wind_cm_s
-  else:
-      return wind_cm_s
+  return wind_cm_s
 end
 \end{lstlisting}
 
@@ -399,51 +571,35 @@ function IsBlockedByRAB(out r)
   if pos_sen == null or rab_sen == null: return false
   if Norm(wind_cm_s) < 1e-9:             return false
 
-  // Tunables (geometry in "blocker radii")
-  lateral_reach_radii <- 3.0    // controls lateral Gaussian width
-  shadow_length_radii <- 4.0    // how far wake reaches downwind
-  gamma_boost         <- 2.0    // 1.0 disables boost
-  upwind_gate_radii   <- 0.5    // minimum along-wind gap
-
-  // World-frame unit wind direction
   wind_dir_hat <- Normalize(wind_cm_s)
-
-  // My yaw (world), used to rotate RAB bearings
-  yaw_world <- GetYawRadians()
+  yaw_world    <- GetYawRadians()
 
   any <- false
   for msg in rab_sen.GetReadings():
 
-      // range in cm -> meters
-      range_m <- 0.01 * msg.Range
+      range_m <- 0.01 * msg.Range   // cm -> m
       if range_m <= 1e-6: continue
 
-      // blocker radius from advertised byte[0] (mm->m) else fallback
+      // blocker radius from msg.Data[0] (mm->m) else fallback
       blocker_r_m <- self_radius_m
       if Size(msg.Data) >= 1:
           adv_m <- 0.001 * msg.Data[0]
-          if 0.005 < adv_m and adv_m < 0.20: blocker_r_m <- adv_m
+          if adv_radius_min_m < adv_m and adv_m < adv_radius_max_m:
+              blocker_r_m <- adv_m
 
-      // bearing to neighbor in world frame
       bearing_world <- yaw_world + msg.HorizontalBearing
 
-      // vector ME->OTHER and OTHER->ME (meters, world)
       me_to_other <- (range_m * cos(bearing_world),
                       range_m * sin(bearing_world))
       other_to_me <- -me_to_other
 
-      // along-wind component (positive means neighbor is upwind)
-      along_m <- Dot(other_to_me, wind_dir_hat)
-
-      // upwind gate: require some min gap to avoid side-by-side cases
-      gate_m <- max(1e-6, upwind_gate_radii * blocker_r_m)
+      along_m <- Dot(other_to_me, wind_dir_hat)   // + means neighbor is upwind
+      gate_m  <- max(1e-6, upwind_gate_radii * blocker_r_m)
       if along_m <= gate_m: continue
 
-      // lateral offset from wind centerline
       lateral_vec <- other_to_me - along_m * wind_dir_hat
       lateral_m   <- Norm(lateral_vec)
 
-      // wake widths and fades (Sec. 4.2)
       sigma <- lateral_reach_radii * blocker_r_m
       L     <- shadow_length_radii * blocker_r_m
 
@@ -451,10 +607,10 @@ function IsBlockedByRAB(out r)
       fade        <- smoothstep(0, L, along_m - gate_m)
       red_i       <- lateral_cov * fade
 
-      // optional non-linear emphasis
+      // emphasize mid-range overlaps (optional), then clamp via max+final clamp
       red_i <- 1 - (1 - red_i) ^ gamma_boost
 
-      r   <- max(r, red_i)   // max over neighbors
+      r   <- max(r, red_i)
       any <- true
 
   r <- min(1.0, r)
@@ -466,7 +622,7 @@ end
 \begin{lstlisting}[language=pseudo]
 function DriveImpulse(v_cm_s)
   yaw <- GetYawRadians()
-  fwd <- (cos(yaw), sin(yaw))              // unit vector, world frame
+  fwd <- (cos(yaw), sin(yaw))              // unit forward vector (world frame)
   J_sum += (mass_kg/100.0) * v_cm_s * fwd
 end
 \end{lstlisting}
@@ -499,33 +655,34 @@ end
 
 \section{Tuning and Debugging}
 \subsection*{Key tunables (typical defaults)}
-\begin{itemize}[leftmargin=*,itemsep=2pt]
-  \item \(\texttt{lateral\_reach\_radii}\) widens or narrows the Gaussian cross-section. Larger \(\Rightarrow\) stronger blocking even with lateral offset.
-  \item \(\texttt{shadow\_length\_radii}\) lengthens the downwind extent. Larger \(\Rightarrow\) blocking persists farther downwind.
-  \item \(\texttt{upwind\_gate\_radii}\) ignores near side-by-side neighbors (requires some minimum along-wind separation).
-  \item \(\texttt{gamma\_boost}\) emphasizes mid-range overlaps (\(r \leftarrow \min(1,\gamma\cdot r)\)).
+\begin{itemize}
+  \item \(\texttt{lateral\_reach\_radii}\) widens or narrows the Gaussian cross-section.
+  \item \(\texttt{shadow\_length\_radii}\) lengthens the downwind extent.
+  \item \(\texttt{upwind\_gate\_radii}\) ignores near side-by-side neighbors.
+  \item \(\texttt{gamma\_boost}\) emphasizes mid-range overlaps before clamping.
 \end{itemize}
 
 \subsection*{Debug tips}
-\begin{itemize}[leftmargin=*,itemsep=2pt]
-  \item Print intermediate terms inside the blocking loop: \(\ell_\parallel\), \(\ell_\perp\), \(r_i\), and the final \(r\).
-  \item Verify the on-screen wind arrow matches your XML.
-  \item If a robot seems unaffected, check: advertised radius byte (mm) \(\rightarrow\) meters, AABB-derived \(R\), and that neighbors are truly upwind (positive \(\ell_\parallel\)).
+\begin{itemize}
+  \item Print intermediate terms inside the blocking loop: \(\ell_\parallel\), \(\ell_\perp\), \(r_i\), and final \(r\).
+  \item Verify the on-screen wind arrow matches XML (\codeid{angle\_deg}, \codeid{magnitude}).
+  \item If a robot seems unaffected, check advertised radius byte conversion (mm \(\rightarrow\) m), AABB-derived \(R\), and that neighbors are truly upwind (\(\ell_\parallel>0\)).
 \end{itemize}
 
-\section*{Appendix: Minimal C++ touchpoints (orientation only)}
-\subsection*{Post-step application (Chipmunk)}
-\begin{lstlisting}[language=C++]
-cpSpaceAddPostStepCallback(space, ApplyAccumPostStep, m_ptBody, payload);
-\end{lstlisting}
+\section{Doxygen API Documentation}
+\subsection{What Doxygen is for}
+Doxygen generates browsable API documentation (HTML) from C++ headers/sources and special comment blocks.
 
-\subsection*{RAB radius broadcast (mm)}
-\begin{lstlisting}[language=C++]
-UInt8 r_mm = (UInt8) std::min(255.0, std::round(m_fSelfRadiusM * 1000.0));
-m_pcRABAct->SetData(0, r_mm);
+\subsection{How to rebuild}
+From the repository root:
+\begin{lstlisting}[language=bash]
+doxygen doc/Doxyfile
 \end{lstlisting}
+This generates HTML output under \codepath{doc/html/}. The folder \codepath{doc/html/} should be \textbf{gitignored} (generated artifact).
 
-\section*{References}
+\subsection{How to view}
+Open \codepath{doc/html/index.html} in a browser.
+
 \begin{thebibliography}{1}
 \bibitem{StolfiDanoy2023}
 D.~H. Stolfi and G.~Danoy, ``Design and analysis of an E-Puck2 robot
