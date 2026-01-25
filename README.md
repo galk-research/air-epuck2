@@ -1,195 +1,197 @@
-<p align="center">
-  <img src="doc/media/demo.gif" alt="e-puck2 wind simulation (demo)" width="720">
-</p>
+# ARGoS Wind / Air Resistance (with Wake / Blocking)
 
-# ARGoS-based Wind / Air Resistance (ARGoS 3)
+This project extends **ARGoS 3** with a practical wind + aerodynamic **wake / blocking** model that works with multiple robot types
+(e.g., **e-puck2** and **foot-bot**) when using the **dynamics2d** physics engine (Chipmunk backend).
 
-This repository extends **ARGoS 3 (dynamics2d / Chipmunk)** with a **global wind model** and an **aerodynamic blocking / wake (shielding) effect** between robots. It provides ready-to-run examples and documentation so you can reproduce wind + wake behaviors in simulation for **e-puck2** and **foot-bot**.
+It provides:
+
+- **Global wind** configured once per experiment (`<configuration><air_resistance .../>`)
+- **Impulse-based physics integration** (wind + drive accumulated and applied **post-step**, after collisions)
+- **Wake / blocking** (upwind robots reduce effective wind for downwind neighbors)
+- **Robot-agnostic base controller** you can inherit from
+- Optional **Qt-OpenGL wind arrow overlay**
+- Full **User Manual + Developer Guide + Doxygen API docs**
 
 ---
 
 ## Quick demo (not an official example)
-The animation above (`doc/media/demo.gif`) is a **quick demonstration clip**.  
+
+This is a short “what it looks like” preview.
+
+![Quick demo](doc/media/demo.gif)
+
+The animation above (`doc/media/demo.gif`) is a quick demonstration clip.  
 It is **not** part of the official, reproducible examples under `examples/` (those are listed below).
 
-**What you’re seeing**
-- **Wind:** 270° (south), **5 cm/s**. The red arrow points **south**.
-- **Controller:** Wind force is applied **in the controller** each tick (Qt loop-functions are used only for UI/labels/arrow).
+### What you’re seeing
 
-**Robots**
-- **Top robot (id=2)** – starts at y=+0.3, **facing north** at **5 cm/s**.  
-  Wind is **5 cm/s south**, so the vectors cancel:  
-  `v_net ≈ (0, +5) + (0, −5) = (0, 0)` → it stays essentially **in place**.
-- **Bottom robot (id=1)** – starts at y=0.0, **facing east** at **5 cm/s**.  
-  Wind pushes south at **5 cm/s**:  
-  `v_net ≈ (+5, 0) + (0, −5) = (+5, −5)` → it moves **diagonally southeast** (forward + downward drift).
+- **Wind:** 270° (south), **5 cm/s**. The red arrow points south.
+- **Controller/physics:** wind and drive are applied through this project’s impulse pipeline each tick.  
+  Qt loop-functions are used only for UI/labels/arrow (visualization), not for the physics itself.
 
-*Angle convention (ARGoS):* 0°=east, 90°=north, 180°=west, 270°=south.
+### Robots explained
 
----
+- **Top robot (id=2)** — starts at *y = +0.3*, facing **north** at **5 cm/s**.  
+  Wind is **5 cm/s south**, so the vectors cancel:
 
-## Project goal
-Provide a clean ARGoS plugin + examples that:
-- Adds a **global 2D wind vector** (direction + magnitude) to an experiment.
-- Applies wind and drive as **post-step impulses** so physics/collisions remain authoritative.
-- Implements **wake-based shielding** using **Range-and-Bearing (RAB)**, with smooth falloff to avoid jitter.
-- Works for both **e-puck2 (single-body)** and **foot-bot (multi-body)** under ARGoS dynamics2d.
+  `v_net ≈ (0, +5) + (0, −5) = (0, 0)` → it stays essentially in place.
 
-## Capabilities
-- **Global wind** configured once per experiment:
-  - `angle_deg` in ARGoS world degrees  
-  - `magnitude` in **cm/s**
-- **Impulse pipeline** per tick:
-  - compute effective wind (possibly reduced by wake)
-  - accumulate drive + wind impulses
-  - apply once in a Chipmunk **post-step callback**
-- **Blocking / wake model**
-  - Upwind neighbors reduce effective wind smoothly (lateral Gaussian-like + downwind smoothstep fade)
-  - “upwind gate” to avoid side-by-side false positives
-  - robots share an effective body radius via **RAB byte[0]** for consistent geometry
-- **Visualization**
-  - Qt/OpenGL **wind arrow overlay** (direction + magnitude)
+- **Bottom robot (id=1)** — starts at *y = 0.0*, facing **east** at **5 cm/s**.  
+  Wind pushes **south** at **5 cm/s**:
+
+  `v_net ≈ (+5, 0) + (0, −5) = (+5, −5)` → it moves diagonally southeast (forward + downward drift).
+
+### Angle convention (ARGoS)
+
+`0° = east`, `90° = north`, `180° = west`, `270° = south`.
 
 ---
 
-## Credit / provenance
-This repository was built on top of an existing **ARGoS e-puck2 plugin skeleton**.
+## Examples (official experiments)
 
-**Upstream repository:** `<https://gitlab.com/uniluxembourg/snt/pcog/adars/e-puck2/-/tree/main?ref_type=heads>`  
+Run experiments from the **repo root** (important for relative library paths):
 
-
-The upstream repository requests the following citation if the e-puck2 plug-in is used in research:
-
-> D. H. Stolfi and G. Danoy, “Design and analysis of an E-Puck2 robot plug-in for the ARGoS simulator,” *Robotics and Autonomous Systems*, vol. 164, p. 104412, 2023. doi: 10.1016/j.robot.2023.104412.
-
-### What changed and why
-Compared to the upstream baseline, this project adds/changes:
-
-1. **Global wind configuration**
-   - Wind is defined once per experiment:
-     ```xml
-     <configuration>
-       <air_resistance angle_deg="0" magnitude="15.0"/>
-     </configuration>
-     ```
-   - Why: reproducible experiments + simple parameter sweeps.
-
-2. **Impulse-based dynamics integration**
-   - Wind and drive are applied as impulses via a **Chipmunk post-step callback**.
-   - Why: collisions remain authoritative and the simulation remains stable.
-
-3. **Aerodynamic blocking / wake using RAB**
-   - Implemented smooth wake reduction from upwind neighbors (prevents flicker/jitter).
-   - Why: enables “drafting/shielding” behaviors and swarm-like effects.
-
-4. **Multi-robot support**
-   - Supports **e-puck2** (single-body) and **foot-bot** (multi-body chassis).
-   - Why: reuse across ARGoS robot types.
-
-5. **Example derived controller (wind-aware)**
-   - Demonstrates inheritance/extension for crosswind compensation (“crabbing”).
-   - Why: shows how to extend the base air-resistance controller without rewriting the physics layer.
-
-(Full architecture, equations, and pseudocode are in the manuals.)
-
----
-
-## Controllers implemented / modified (explicit)
-- **`air_resistance_controller`**  
-  Base controller providing:
-  - wind + drive impulse pipeline
-  - RAB-based wake reduction / blocking
-
-- **`wind_aware_air_resistance_controller`**  
-  Derived/example controller demonstrating how to extend the base controller (used in the crosswind crab example).
-
----
-
-## Official examples (reproducible)
-All runnable experiments are under `examples/` and are documented in the **User Manual**.  
-All GIFs shown below are stored in `doc/media/`.
+```bash
+argos3 -c examples/experiments/<file>.argos
+````
 
 ### 1) Blocked vs Unblocked (3 e-puck2)
-<p align="center">
-  <img src="doc/media/blocked vs unblocked.gif" alt="Blocked vs unblocked" width="720">
-</p>
 
-**Shows:** A leader blocks wind; a follower in the wake moves upwind better than an offset robot.  
-**Run:**
+A leader blocks wind; follower in the wake progresses upwind; laterally offset robot does not.
+
 ```bash
-argos3 -c examples/airResistance_blocked_vs_unblocked.txt
-````
+argos3 -c examples/experiments/airResistance_blocked_vs_unblocked.argos
+```
+
+![Blocked vs Unblocked](doc/media/blocked%20vs%20unblocked.gif)
+
+---
 
 ### 2) Two Robots — No Blocking (parallel columns)
 
-<p align="center">
-  <img src="doc/media/two no block.gif" alt="Two robots no blocking" width="720">
-</p>
-
-**Shows:** Two e-puck2 spaced laterally; no wake overlap; both feel full wind.
-**Run:**
+Robots are laterally separated enough that wakes do not overlap; both see similar wind.
 
 ```bash
-argos3 -c examples/airResistance_two_no_block.txt
+argos3 -c examples/experiments/airResistance_two_no_block.argos
 ```
 
-### 3) Two Robots with a Blocker (1 leader, 2 followers)
-
-<p align="center">
-  <img src="doc/media/two with block.gif" alt="Two with blocker" width="720">
-</p>
-
-**Shows:** One leader upwind; two followers within the wake core benefit from shielding.
-**Run:**
-
-```bash
-argos3 -c examples/airResistance_two_with_block.txt
-```
-
-### 4) Three in a Row (wake chaining)
-
-<p align="center">
-  <img src="doc/media/three in a row.gif" alt="Three in a row" width="720">
-</p>
-
-**Shows:** Leader → follower → follower; wake fades downwind, so farther robots benefit less.
-**Run:**
-
-```bash
-argos3 -c examples/airResistance_three_in_row.txt
-```
-
-### 5) Foot-bot Wake Demo (multi-body)
-
-<p align="center">
-  <img src="doc/media/footbot blocking.gif" alt="Foot-bot wake demo" width="720">
-</p>
-
-**Shows:** Wake blocking with foot-bots (multi-body dynamics).
-**Run:**
-
-```bash
-argos3 -c examples/airResistance_foot_bot_blocking.txt
-```
-
-### 6) Crosswind “Crab” Control (foot-bot)
-
-<p align="center">
-  <img src="doc/media/crab_footbot.gif" alt="Crosswind crab control" width="720">
-</p>
-
-**Shows:** Crosswind compensation using the derived wind-aware controller.
-**Run:**
-
-```bash
-argos3 -c examples/wind_crab_footbot.txt
-```
+![Two no block](doc/media/two%20no%20block.gif)
 
 ---
 
-## Configuration (quick reference)
+### 3) Two Robots with a Blocker (1 leader, 2 followers)
 
-### Global wind
+Two followers behind a blocker benefit from partial shielding.
+
+```bash
+argos3 -c examples/experiments/airResistance_two_with_block.argos
+```
+
+![Two with block](doc/media/two%20with%20block.gif)
+
+---
+
+### 4) Three in a Row (wake chaining)
+
+Aligned robots show wake chaining: strong benefit close behind the blocker, weaker farther downwind.
+
+```bash
+argos3 -c examples/experiments/airResistance_three_in_row.argos
+```
+
+![Three in a row](doc/media/three%20in%20a%20row.gif)
+
+---
+
+### 5) Foot-bot Wake Demo (multi-body)
+
+Same wake mechanism using a multi-body robot model.
+
+```bash
+argos3 -c examples/experiments/airResistance_foot_bot_blocking.argos
+```
+
+![Foot-bot blocking](doc/media/footbot%20blocking.gif)
+
+---
+
+### 6) Crosswind “Crab” Control (wind-aware example)
+
+Shows a derived controller compensating crosswind (“crabbing”) vs the base behavior.
+
+```bash
+argos3 -c examples/experiments/wind_crab_footbot.argos
+```
+
+![Crab footbot](doc/media/crab_footbot.gif)
+
+---
+
+## Which controller should I use?
+
+This repo provides one **base controller** and two **example derived controllers**.
+
+* **`air_resistance_controller`** (base):
+  Use this if you want to build your own behavior (navigation, formation, etc.) **while reusing wind + wake physics**.
+
+* **`wind_aware_air_resistance_controller`** (example derived):
+  Demonstrates how to **inherit** from the base and override logic to reduce crosswind drift (“crabbing”).
+
+* **`formation_template_controller`** (example derived):
+  Demonstrates how to inherit from the base while adding **multi-robot coordination logic** (template for formations, IDs, spacing, etc.).
+
+> Important: If you want the robot to “drive” under this project’s physics model, you should use the base pipeline and call
+> `DriveImpulse(...)` (or rely on the base controller’s call).
+> Avoid directly forcing velocities (e.g. setting linear velocity) if you want consistent results with collisions + post-step impulses.
+
+---
+
+## Build
+
+### Prerequisites
+
+- **ARGoS 3** installed **with the `dynamics2d` physics engine available** (Chipmunk backend).
+- Build tools: **CMake**, a C++17 compiler, and **make**/**ninja**.
+- (Optional) For visualization: ARGoS **Qt-OpenGL** build/install (to see the wind arrow overlay).
+- **Robot plugins** (depends on which experiments you run):
+  - **foot-bot**: typically comes with standard ARGoS installs.
+  - **e-puck2**: **must be installed separately** (this repo does **not** ship the upstream e-puck2 robot plugin code).  
+    If you want to run the e-puck2 experiments under `examples/experiments/*.argos`, install the upstream e-puck2 plugin first (and make sure ARGoS can load it via install prefix or `ARGOS_PLUGIN_PATH`).
+
+### Build everything (recommended)
+
+This builds:
+- the **base** controller + loop-functions
+- the **example derived controllers** used by some experiments (`wind_aware`, `formation_template`)
+
+From the repo root:
+
+```bash
+mkdir -p build
+cmake -S . -B build -DBUILD_EXAMPLE_CONTROLLERS=ON
+cmake --build build -j
+````
+
+Notes:
+
+* You do **not** need `-DCMAKE_BUILD_TYPE=Release`: this project’s top-level `CMakeLists.txt` defaults to **Release** when not specified.
+* If you want Debug explicitly:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_EXAMPLE_CONTROLLERS=ON
+cmake --build build -j
+```
+
+* If you only want the **base plugins** (no example controllers):
+
+```bash
+cmake -S . -B build -DBUILD_EXAMPLE_CONTROLLERS=OFF
+cmake --build build -j
+```
+
+## Configuration (wind + wake tunables)
+
+Global wind (configured once per experiment under `<configuration>`):
 
 ```xml
 <configuration>
@@ -197,131 +199,152 @@ argos3 -c examples/wind_crab_footbot.txt
 </configuration>
 ```
 
-### Controller block (per robot)
+Optional wake / shielding tunables (all optional; defaults preserve behavior):
 
 ```xml
-<controllers>
-  <air_resistance_controller id="airbot"
-      library="build/lib/controllers/air_resistance/libair_resistance">
-    <actuators>
-      <differential_steering implementation="default"/>
-      <range_and_bearing implementation="default"/>
-    </actuators>
-    <sensors>
-      <positioning implementation="default"/>
-      <range_and_bearing implementation="medium" medium="rab" show_rays="true"/>
-    </sensors>
-    <params velocity="15.0"/>
-  </air_resistance_controller>
-</controllers>
+<configuration>
+  <air_resistance
+      angle_deg="0"
+      magnitude="15.0"
+      lateral_reach_radii="3.0"
+      shadow_length_radii="4.0"
+      gamma_boost="2.0"
+      upwind_gate_radii="0.5"
+      adv_radius_min_m="0.005"
+      adv_radius_max_m="0.20"/>
+</configuration>
 ```
 
-Units:
+Units (summary):
 
-* `magnitude` (wind) is **cm/s**
-* `velocity` (controller) is **cm/s**
+* `magnitude`: **cm/s**
+* controller `velocity`: **cm/s**
+* `*_radii`: **multipliers of robot radius** (dimensionless)
+* `adv_radius_*_m`: **meters**
 
 ---
 
-# Compiling the code
+## Repository structure (where things live)
 
-Make sure you have **ARGoS >= 3.0.0-beta52** installed.
+High-level layout:
 
-```bash
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ../src
-make
-sudo make install
 ```
-
-If ARGoS does not find the new plugins, try:
-
-```bash
-cmake -DCMAKE_BUILD_TYPE=Release ../src -DCMAKE_INSTALL_PREFIX=/usr
-```
-
-Debug build:
-
-```bash
-cmake -DCMAKE_BUILD_TYPE=Debug ../src
+src/
+  controllers/
+    air_resistance/              # Base controller (CAirResistance)
+  loop_functions/
+    wind_loop_functions/         # Wind global config + shared access
+    wind_qt_user_functions/      # (Qt) draw wind arrow
+examples/
+  controllers/                   # Example derived controllers (optional build)
+    wind_aware/
+    formation_template/
+  experiments/                   # Runnable .argos experiment configs
+doc/
+  Doxyfile                       # Doxygen config
+  docs/                          # LaTeX manuals + Makefile targets
+  media/                         # GIFs used in README/manuals
 ```
 
 ---
 
-# Documentation (PDFs) — where they come from + how to regenerate
+## Documentation
 
-## Where the PDFs come from
+### Build PDFs (User Manual + Developer Guide)
 
-The PDFs are generated from LaTeX sources under `doc/docs/`:
-
-* `doc/docs/ARGoS_based_Air_Resistance___User_Manual/main.tex`
-* `doc/docs/ARGoS_based_Air_Resistance___developer_manual/main.tex`
-
-The `doc/docs/Makefile` builds them and copies outputs into:
-
-* `doc/docs/pdf/`
-
-## Build the docs (Linux)
-
-From `doc/docs`:
-
-### 1) Install LaTeX build tools
-
-This set matches what we needed to successfully build both manuals on Debian/Ubuntu:
+From repo root:
 
 ```bash
-sudo apt update
-sudo apt install -y latexmk \
-  texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended \
-  texlive-pictures texlive-science cm-super lmodern
-```
-
-### 2) Build both manuals
-
-```bash
+cd doc/docs
 make docs
 ```
 
-Outputs:
+This generates the PDFs under:
 
-* `doc/docs/pdf/ARGoS_based_Air_Resistance__User_Manual.pdf`
-* `doc/docs/pdf/ARGoS_based_Air_Resistance__developer_manual.pdf`
+* `doc/docs/build/`
 
-### 3) Clean doc build artifacts
+You can also build individually:
 
 ```bash
-make clean
+make user_manual
+make developer_manual
 ```
 
-## Troubleshooting doc builds
+### Doxygen (HTML API docs)
 
-* **`latexmk: not found`**
+#### 1) Install dependencies (Ubuntu/Debian)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y doxygen graphviz
+```
+
+#### 2) Rebuild Doxygen HTML (from repo root)
+
+```bash
+cd doc
+doxygen Doxyfile
+```
+
+#### 3) Open it
+
+```bash
+xdg-open doc/html/index.html
+```
+
+(Alternative wrapper target:)
+
+```bash
+cd doc/docs
+make doxygen
+```
+
+---
+
+## Provenance / Citation
+
+This project was originally bootstrapped from the upstream e-puck2 ARGoS plugin skeleton.
+
+If you use the e-puck2 plugin in research, please cite:
+
+> D. H. Stolfi and G. Danoy, “Design and analysis of an E-Puck2 robot plug-in for the ARGoS simulator,” *Robotics and Autonomous Systems*, vol. 164, p. 104412, 2023. doi: 10.1016/j.robot.2023.104412.
+
+---
+
+## What this project adds (vs the upstream baseline)
+
+This repository goes beyond the baseline by introducing **new functionality** rather than just reorganizing existing behavior:
+
+* **A global wind configuration** (`<configuration><air_resistance .../>`) used consistently across an experiment
+* A **post-step impulse pipeline** that applies wind + drive **after collisions** (Chipmunk post-step callback through dynamics2d)
+* A **wake / blocking model** based on local neighborhood geometry (via RAB range/bearing), with smooth lateral + downwind falloff
+* **Configurable wake tunables in XML** (width/length/boost/gate + advertised-radius sanity limits)
+* A **robot-agnostic base controller** designed for subclassing (examples show how to extend it cleanly)
+* Optional **Qt-OpenGL visualization overlay** (wind arrow)
+* A full documentation set: **User Manual**, **Developer Guide**, and **Doxygen HTML**
+
+---
+
+## Troubleshooting
+
+* **GIFs not showing on GitHub**: ensure links use `%20` for spaces (this README does).
+  Better long-term: rename files to remove spaces.
+* **Plugins not found**: run from repo root, or set:
 
   ```bash
-  sudo apt install -y latexmk
+  export ARGOS_PLUGIN_PATH="$PWD/build/lib:${ARGOS_PLUGIN_PATH}"
   ```
-* **`siunitx.sty not found`**
+* **No wind effect**: ensure your experiment uses:
 
-  ```bash
-  sudo apt install -y texlive-science
-  ```
-* **`pdfTeX error (font expansion)`** (microtype/scalable fonts)
-
-  ```bash
-  sudo apt install -y cm-super lmodern
+  ```xml
+  <physics_engines>
+    <dynamics2d id="dyn2d"/>
+  </physics_engines>
   ```
 
 ---
 
-## Repo layout (where to look)
+## License
 
-* `src/` — plugin/library source
-* `controllers/` — controller implementations
-* `loop_functions/` — wind parsing + visualization support
-* `examples/` — runnable ARGoS experiments
-* `doc/docs/` — LaTeX sources + Makefile to build manuals
-* `doc/docs/pdf/` — generated PDFs (regenerate via `make docs`)
-* `doc/media/` — GIFs used in this README
-
+See the repository license (and upstream licensing where applicable).
 
